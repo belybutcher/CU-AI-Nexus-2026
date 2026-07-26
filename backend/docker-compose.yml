@@ -1,0 +1,66 @@
+# CU AI Nexus backend — local orchestration.
+#
+# Usage:
+#   docker compose up --build          # start API + Postgres
+#   docker compose run --rm migrate    # run Alembic migrations against Postgres
+#
+services:
+  api:
+    build: .
+    container_name: cu_ai_nexus_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://cu_nexus_user:cu_nexus_pass@db:5432/cu_ai_nexus
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app/storage:/app/app/storage
+      - ./models:/app/models
+    networks:
+      - cu_ai_nexus_net
+
+  db:
+    image: postgres:16-alpine
+    container_name: cu_ai_nexus_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cu_nexus_user
+      POSTGRES_PASSWORD: cu_nexus_pass
+      POSTGRES_DB: cu_ai_nexus
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cu_nexus_user -d cu_ai_nexus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cu_ai_nexus_net
+
+  migrate:
+    build: .
+    container_name: cu_ai_nexus_migrate
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://cu_nexus_user:cu_nexus_pass@db:5432/cu_ai_nexus
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    networks:
+      - cu_ai_nexus_net
+
+networks:
+  cu_ai_nexus_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
